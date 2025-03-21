@@ -14,14 +14,15 @@ import { SignData } from '../types';
 /**
  * ファイルアップロード処理
  */
-export const uploadFile = async (req: Request, res: Response) => {
+export const uploadFile = async (req: Request, res: Response): Promise<void> => {
   try {
     // ファイルが添付されているか確認
     if (!req.file) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: "ファイルがアップロードされていません。",
       });
+      return;
     }
 
     const file = req.file;
@@ -35,7 +36,7 @@ export const uploadFile = async (req: Request, res: Response) => {
     const fileUrl = `${baseUrl}/api/temp/${fileId}`;
 
     // 成功レスポンスを返す
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       fileId,
       fileName: sanitizedFileName,
@@ -46,7 +47,7 @@ export const uploadFile = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("ファイルアップロードエラー:", error);
     
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       error: "ファイルのアップロード中にエラーが発生しました。",
     });
@@ -56,17 +57,18 @@ export const uploadFile = async (req: Request, res: Response) => {
 /**
  * C2PA情報読み取り処理
  */
-export const readC2pa = async (req: Request, res: Response) => {
+export const readC2pa = async (req: Request, res: Response): Promise<void> => {
   try {
     // リクエストボディからfileIdを取得
     const { fileId } = req.body;
 
     // fileIdのバリデーション
     if (!fileId || !isValidFileId(fileId)) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: "無効なファイルIDです。",
       });
+      return;
     }
 
     // 一時ファイルのパスを取得
@@ -76,20 +78,22 @@ export const readC2pa = async (req: Request, res: Response) => {
     try {
       await fs.access(tempFilePath);
     } catch (error) {
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         error: `指定されたファイルが見つかりません。: ${error}`,
       });
+      return;
     }
 
     // MIMEタイプを取得
     const mimeType = getMimeType(fileId);
 
     if (!mimeType) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: "サポートされていないファイル形式です。",
       });
+      return;
     }
 
     try {
@@ -113,14 +117,14 @@ export const readC2pa = async (req: Request, res: Response) => {
             validation_warnings: result.validation_warnings || []
           };
 
-          return res.json({
+          res.json({
             success: true,
             hasC2pa: true,
             manifest: manifestData,
           });
         } else {
           // C2PAデータがない場合
-          return res.json({
+          res.json({
             success: true,
             hasC2pa: false,
           });
@@ -131,14 +135,14 @@ export const readC2pa = async (req: Request, res: Response) => {
         
         // エラーが発生した場合でもアプリケーションを継続させるため
         // C2PAデータがないとして処理
-        return res.json({
+        res.json({
           success: true,
           hasC2pa: false,
         });
       }
     } catch (c2paError) {
       console.error("C2PAモジュール処理エラー:", c2paError);
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
         error: "C2PAモジュールの処理に失敗しました",
       });
@@ -146,7 +150,7 @@ export const readC2pa = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("リクエスト処理エラー:", error);
     
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       error: "C2PAデータの読み取り中にエラーが発生しました。",
     });
@@ -156,34 +160,37 @@ export const readC2pa = async (req: Request, res: Response) => {
 /**
  * C2PA情報の署名処理
  */
-export const signC2pa = async (req: Request, res: Response) => {
+export const signC2pa = async (req: Request, res: Response): Promise<void> => {
   try {
     // リクエストボディを取得
     const { fileId, manifestData, certificate, privateKey, useLocalSigner } = req.body as SignData;
 
     // fileIdのバリデーション
     if (!fileId || !isValidFileId(fileId)) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: "無効なファイルIDです。",
       });
+      return;
     }
 
     // マニフェストデータのバリデーション
     if (!manifestData || typeof manifestData !== "object") {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: "無効なマニフェストデータです。",
       });
+      return;
     }
     
     // ローカル署名の場合、証明書と秘密鍵のバリデーション
     if (useLocalSigner) {
       if (!certificate || !privateKey) {
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
           error: "ローカル署名には証明書と秘密鍵が必要です。",
         });
+        return;
       }
     }
 
@@ -194,10 +201,11 @@ export const signC2pa = async (req: Request, res: Response) => {
     try {
       await fs.access(tempFilePath);
     } catch (error) {
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         error: `指定されたファイルが見つかりません。: ${error}`,
       });
+      return;
     }
 
     // ファイル拡張子を抽出
@@ -211,10 +219,11 @@ export const signC2pa = async (req: Request, res: Response) => {
     const mimeType = getMimeType(extension);
 
     if (!mimeType) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: "サポートされていないファイル形式です。",
       });
+      return;
     }
 
     try {
@@ -242,10 +251,11 @@ export const signC2pa = async (req: Request, res: Response) => {
           };
         } catch (err) {
           console.error("証明書または秘密鍵の処理エラー:", err);
-          return res.status(400).json({
+          res.status(400).json({
             success: false,
             error: "証明書または秘密鍵の処理に失敗しました: " + (err instanceof Error ? err.message : String(err)),
           });
+          return;
         }
       } else {
         console.log("テスト署名者を使用します");
@@ -263,21 +273,21 @@ export const signC2pa = async (req: Request, res: Response) => {
       if (manifestData.creator) {
         assertions.push({
           label: "dc.creator",
-          data: manifestData.creator,
+          data: { value: manifestData.creator }, // オブジェクトでラップ
         });
       }
 
       if (manifestData.copyright) {
         assertions.push({
           label: "dc.rights",
-          data: manifestData.copyright,
+          data: { value: manifestData.copyright }, // オブジェクトでラップ
         });
       }
 
       if (manifestData.description) {
         assertions.push({
           label: "dc.description",
-          data: manifestData.description,
+          data: { value: manifestData.description }, // オブジェクトでラップ
         });
       }
 
@@ -297,7 +307,7 @@ export const signC2pa = async (req: Request, res: Response) => {
       try {
         // 署名を実行
         console.log("署名処理開始...");
-        const result = await c2pa.sign({
+        await c2pa.sign({
           asset,
           manifest,
           options: {
@@ -312,7 +322,7 @@ export const signC2pa = async (req: Request, res: Response) => {
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         const downloadUrl = `${baseUrl}/api/download?file=${outputFileName}`;
 
-        return res.json({
+        res.json({
           success: true,
           fileId: outputFileName,
           downloadUrl,
@@ -333,14 +343,14 @@ export const signC2pa = async (req: Request, res: Response) => {
           }
         }
         
-        return res.status(500).json({
+        res.status(500).json({
           success: false,
           error: errorMessage,
         });
       }
     } catch (c2paError) {
       console.error("C2PAモジュール処理エラー:", c2paError);
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
         error: "C2PAモジュールの処理に失敗しました",
       });
@@ -348,7 +358,7 @@ export const signC2pa = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("C2PA署名エラー:", error);
     
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       error: "C2PA署名処理中にエラーが発生しました。",
     });
@@ -358,17 +368,18 @@ export const signC2pa = async (req: Request, res: Response) => {
 /**
  * C2PA情報の検証処理
  */
-export const verifyC2pa = async (req: Request, res: Response) => {
+export const verifyC2pa = async (req: Request, res: Response): Promise<void> => {
   try {
     // リクエストボディからfileIdを取得
     const { fileId } = req.body;
 
     // fileIdのバリデーション
     if (!fileId || !isValidFileId(fileId)) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: "無効なファイルIDです。",
       });
+      return;
     }
 
     // 一時ファイルのパスを取得
@@ -378,20 +389,22 @@ export const verifyC2pa = async (req: Request, res: Response) => {
     try {
       await fs.access(tempFilePath);
     } catch (error) {
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         error: `指定されたファイルが見つかりません。: ${error}`,
       });
+      return;
     }
 
     // MIMEタイプを取得
     const mimeType = getMimeType(fileId);
 
     if (!mimeType) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: "サポートされていないファイル形式です。",
       });
+      return;
     }
 
     try {
@@ -406,7 +419,7 @@ export const verifyC2pa = async (req: Request, res: Response) => {
         const result = await c2pa.read({ path: tempFilePath, mimeType });
 
         if (!result) {
-          return res.json({
+          res.json({
             success: true,
             hasC2pa: false,
             isValid: false,
@@ -415,6 +428,7 @@ export const verifyC2pa = async (req: Request, res: Response) => {
               errors: ["このファイルにはC2PA情報が含まれていません。"],
             },
           });
+          return;
         }
 
         // 検証ステータスに基づいて結果を生成
@@ -454,7 +468,7 @@ export const verifyC2pa = async (req: Request, res: Response) => {
           // その他の検証詳細情報があれば追加
         };
 
-        return res.json({
+        res.json({
           success: true,
           hasC2pa: true,
           isValid,
@@ -469,7 +483,7 @@ export const verifyC2pa = async (req: Request, res: Response) => {
         // C2PA検証エラーをログに記録
         console.error('C2PA検証エラー:', verifyError);
         
-        return res.json({
+        res.json({
           success: true,
           hasC2pa: false,
           isValid: false,
@@ -481,7 +495,7 @@ export const verifyC2pa = async (req: Request, res: Response) => {
       }
     } catch (c2paError) {
       console.error("C2PAモジュール処理エラー:", c2paError);
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
         error: "C2PAモジュールの処理に失敗しました",
       });
@@ -489,7 +503,7 @@ export const verifyC2pa = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("リクエスト処理エラー:", error);
     
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       error: "C2PAデータの検証中にエラーが発生しました。",
     });

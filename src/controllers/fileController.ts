@@ -7,15 +7,16 @@ import { config } from '../config';
 /**
  * 一時ファイルの取得処理
  */
-export const getTempFile = async (req: Request, res: Response) => {
+export const getTempFile = async (req: Request, res: Response): Promise<void> => {
   try {
     const { filename } = req.params;
 
     // ファイル名のバリデーション
     if (!filename || !isValidFileId(filename)) {
-      return res.status(400).json({
+      res.status(400).json({
         error: "無効なファイル名です。",
       });
+      return;
     }
 
     // 一時ファイルのパスを取得
@@ -25,9 +26,10 @@ export const getTempFile = async (req: Request, res: Response) => {
     try {
       await fs.access(filePath);
     } catch (error) {
-      return res.status(404).json({
+      res.status(404).json({
         error: `ファイルが見つかりません。: ${error}`,
       });
+      return;
     }
 
     // ファイルを読み込み
@@ -35,16 +37,16 @@ export const getTempFile = async (req: Request, res: Response) => {
 
     // MIMEタイプを取得
     const extension = path.extname(filename).toLowerCase();
-    const contentType = getMimeType(extension) || "application/octet-stream";
+    const contentType = getMimeType(filename) || "application/octet-stream";
 
     // レスポンスを返す
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=300');
-    return res.send(fileBuffer);
+    res.send(fileBuffer);
   } catch (error) {
     console.error("一時ファイル取得エラー:", error);
     
-    return res.status(500).json({
+    res.status(500).json({
       error: "ファイルの取得中にエラーが発生しました。",
     });
   }
@@ -53,16 +55,17 @@ export const getTempFile = async (req: Request, res: Response) => {
 /**
  * ファイルダウンロード処理
  */
-export const downloadFile = async (req: Request, res: Response) => {
+export const downloadFile = async (req: Request, res: Response): Promise<void> => {
   try {
     // クエリパラメータからファイル名を取得
     const fileName = req.query.file as string;
 
     // ファイル名のバリデーション
     if (!fileName || !isValidFileId(fileName)) {
-      return res.status(400).json({
+      res.status(400).json({
         error: "無効なファイル名です。",
       });
+      return;
     }
 
     // ファイルパスを構築
@@ -72,9 +75,10 @@ export const downloadFile = async (req: Request, res: Response) => {
     try {
       await fs.access(filePath);
     } catch (error) {
-      return res.status(404).json({
+      res.status(404).json({
         error: `ファイルが見つかりません。: ${error}`,
       });
+      return;
     }
 
     // ファイルを読み込み
@@ -82,7 +86,7 @@ export const downloadFile = async (req: Request, res: Response) => {
 
     // MIMEタイプを取得
     const extension = path.extname(fileName).toLowerCase();
-    const contentType = getMimeType(extension) || "application/octet-stream";
+    const contentType = getMimeType(fileName) || "application/octet-stream";
 
     // ダウンロード用のファイル名を生成
     const downloadFileName = `c2pa_signed_${Date.now()}${extension}`;
@@ -90,11 +94,11 @@ export const downloadFile = async (req: Request, res: Response) => {
     // レスポンスを返す
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${downloadFileName}"`);
-    return res.send(fileBuffer);
+    res.send(fileBuffer);
   } catch (error) {
     console.error("ファイルダウンロードエラー:", error);
     
-    return res.status(500).json({
+    res.status(500).json({
       error: "ファイルのダウンロード中にエラーが発生しました。",
     });
   }
