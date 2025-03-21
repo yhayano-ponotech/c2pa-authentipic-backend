@@ -10,15 +10,40 @@ export const config = {
   tempFileTtl: 24 * 60 * 60 * 1000, // 24時間
   maxUploadSize: 10 * 1024 * 1024, // 10MB
   supportedImageFormats: [
-    { extension: '.jpg', mimeType: 'image/jpeg' },
-    { extension: '.jpeg', mimeType: 'image/jpeg' },
-    { extension: '.png', mimeType: 'image/png' },
-    { extension: '.webp', mimeType: 'image/webp' },
-    { extension: '.tif', mimeType: 'image/tiff' },
-    { extension: '.tiff', mimeType: 'image/tiff' },
-    { extension: '.avif', mimeType: 'image/avif' },
-    { extension: '.heic', mimeType: 'image/heic' },
-    { extension: '.heif', mimeType: 'image/heif' },
-    { extension: '.gif', mimeType: 'image/gif' }
-  ]
+    { extension: '.jpg', mimeType: 'image/jpeg', name: 'JPEG' },
+    { extension: '.jpeg', mimeType: 'image/jpeg', name: 'JPEG' },
+    { extension: '.png', mimeType: 'image/png', name: 'PNG' },
+    { extension: '.webp', mimeType: 'image/webp', name: 'WebP' },
+    { extension: '.tif', mimeType: 'image/tiff', name: 'TIFF' },
+    { extension: '.tiff', mimeType: 'image/tiff', name: 'TIFF' },
+    { extension: '.avif', mimeType: 'image/avif', name: 'AVIF' },
+    { extension: '.heic', mimeType: 'image/heic', name: 'HEIC' },
+    { extension: '.heif', mimeType: 'image/heif', name: 'HEIF' },
+    { extension: '.gif', mimeType: 'image/gif', name: 'GIF' }
+  ],
+  appInfo: {
+    name: 'C2PA Web App',
+    version: '1.0.0',
+    description: 'C2PA情報の読み取り、追加、検証を行うWebアプリケーション',
+    repository: 'https://github.com/example/c2pa-web-app'
+  },
+  c2pa: {
+    defaultSigningAlgorithm: 'ES256',
+    defaultTsaUrl: 'http://timestamp.digicert.com',
+    thumbnailOptions: {
+      maxSize: 1024,
+      quality: 80
+    }
+  },
+  cors: {
+    origin: process.env.CORS_ORIGIN || '*',
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: false,
+    maxAge: 86400 // 24時間
+  },
+  logging: {
+    level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+    format: process.env.NODE_ENV === 'production' ? 'combined' : 'dev'
+  }
 };

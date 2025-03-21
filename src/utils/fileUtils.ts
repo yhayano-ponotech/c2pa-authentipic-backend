@@ -4,6 +4,7 @@ import { config } from '../config';
 
 /**
  * 一意のIDを生成する関数
+ * @returns 16バイトのランダムな16進数文字列
  */
 export function generateUniqueId(): string {
   return crypto.randomBytes(16).toString("hex");
@@ -11,6 +12,8 @@ export function generateUniqueId(): string {
 
 /**
  * ファイル名をサニタイズする関数
+ * @param filename ファイル名
+ * @returns サニタイズされたファイル名
  */
 export function sanitizeFilename(filename: string): string {
   // 基本的な無効な文字を削除または置換
@@ -25,6 +28,8 @@ export function sanitizeFilename(filename: string): string {
 
 /**
  * ファイルIDが有効かどうかをチェックする関数
+ * @param fileId ファイルID
+ * @returns 有効な場合はtrue、そうでない場合はfalse
  */
 export function isValidFileId(fileId: string): boolean {
   // ベーシックなバリデーション
@@ -35,6 +40,8 @@ export function isValidFileId(fileId: string): boolean {
 
 /**
  * 一時ファイルのパスを取得する関数
+ * @param fileId ファイルID
+ * @returns 一時ファイルの完全パス
  */
 export function getTempFilePath(fileId: string): string {
   if (!isValidFileId(fileId)) {
@@ -45,6 +52,8 @@ export function getTempFilePath(fileId: string): string {
 
 /**
  * 日付をフォーマットする関数
+ * @param dateString ISO形式の日付文字列
+ * @returns フォーマットされた日付文字列
  */
 export function formatDate(dateString: string): string {
   if (!dateString) {
@@ -69,6 +78,8 @@ export function formatDate(dateString: string): string {
 
 /**
  * ファイルの拡張子からMIMEタイプを取得する関数
+ * @param filename ファイル名
+ * @returns MIMEタイプ（見つからない場合はnull）
  */
 export function getMimeType(filename: string): string | null {
   const extension = path.extname(filename).toLowerCase();
@@ -79,4 +90,35 @@ export function getMimeType(filename: string): string | null {
   );
 
   return format ? format.mimeType : null;
+}
+
+/**
+ * MIMEタイプから拡張子を取得する関数
+ * @param mimeType MIMEタイプ
+ * @returns 拡張子（見つからない場合はnull）
+ */
+export function getExtensionFromMimeType(mimeType: string): string | null {
+  const format = config.supportedImageFormats.find(format => 
+    format.mimeType === mimeType
+  );
+
+  return format ? format.extension : null;
+}
+
+/**
+ * ファイルサイズを人間が読みやすい形式に変換する関数
+ * @param bytes バイト数
+ * @param decimals 小数点以下の桁数
+ * @returns フォーマットされたファイルサイズ文字列
+ */
+export function formatFileSize(bytes: number, decimals = 2): string {
+  if (bytes === 0) return "0 Bytes";
+
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
 }

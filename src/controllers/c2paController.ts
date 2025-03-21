@@ -7,9 +7,19 @@ import {
   getMimeType, 
   generateUniqueId 
 } from '../utils/fileUtils';
-import { loadC2pa } from '../utils/c2paUtils';
 import { config } from '../config';
 import { SignData } from '../types';
+import { 
+  createC2pa, 
+  createTestSigner, 
+  ManifestBuilder, 
+  SigningAlgorithm, 
+  BufferAsset, 
+  FileAsset
+} from 'c2pa-node';
+
+// シングルトンC2PAインスタンスの作成
+const c2paInstance = createC2pa();
 
 /**
  * ファイルアップロード処理
@@ -97,54 +107,33 @@ export const readC2pa = async (req: Request, res: Response): Promise<void> => {
     }
 
     try {
-      // C2PAモジュールを動的にロード
-      const { createC2pa } = await loadC2pa();
-      
-      // C2PAインスタンスを作成
-      const c2pa = createC2pa();
+      // ファイルのC2PA情報を読み取る
+      const fileAsset: FileAsset = { path: tempFilePath, mimeType };
+      const result = await c2paInstance.read(fileAsset);
 
-      try {
-        // ファイルパスを使用してC2PAデータを読み込み
-        const result = await c2pa.read({ path: tempFilePath, mimeType });
-
-        if (result && typeof result === 'object') {
-          // C2PAデータがある場合
-          const manifestData = {
-            active_manifest: result.active_manifest || '',
-            manifests: result.manifests || {},
-            validation_status: result.validation_status || 'unknown',
-            validation_errors: result.validation_errors || [],
-            validation_warnings: result.validation_warnings || []
-          };
-
-          res.json({
-            success: true,
-            hasC2pa: true,
-            manifest: manifestData,
-          });
-        } else {
-          // C2PAデータがない場合
-          res.json({
-            success: true,
-            hasC2pa: false,
-          });
-        }
-      } catch (readError) {
-        // C2PA読み取りエラーをログに記録
-        console.error('C2PA読み取りエラー:', readError);
-        
-        // エラーが発生した場合でもアプリケーションを継続させるため
-        // C2PAデータがないとして処理
+      if (result) {
+        // C2PAデータがある場合
+        res.json({
+          success: true,
+          hasC2pa: true,
+          manifest: result,
+        });
+      } else {
+        // C2PAデータがない場合
         res.json({
           success: true,
           hasC2pa: false,
         });
       }
-    } catch (c2paError) {
-      console.error("C2PAモジュール処理エラー:", c2paError);
-      res.status(500).json({
-        success: false,
-        error: "C2PAモジュールの処理に失敗しました",
+    } catch (readError) {
+      // C2PA読み取りエラーをログに記録
+      console.error('C2PA読み取りエラー:', readError);
+      
+      // エラーが発生した場合でもアプリケーションを継続させるため
+      // C2PAデータがないとして処理
+      res.json({
+        success: true,
+        hasC2pa: false,
       });
     }
   } catch (error) {
@@ -216,7 +205,7 @@ export const signC2pa = async (req: Request, res: Response): Promise<void> => {
     const outputPath = path.join(config.tempDir, outputFileName);
 
     // MIMEタイプを拡張子から決定
-    const mimeType = getMimeType(extension);
+    const mimeType = getMimeType(fileId);
 
     if (!mimeType) {
       res.status(400).json({
@@ -227,9 +216,6 @@ export const signC2pa = async (req: Request, res: Response): Promise<void> => {
     }
 
     try {
-      // C2PAモジュールを動的にロード
-      const { createC2pa, createTestSigner, ManifestBuilder, SigningAlgorithm } = await loadC2pa();
-
       // 署名者の作成
       let signer;
       
@@ -237,7 +223,7 @@ export const signC2pa = async (req: Request, res: Response): Promise<void> => {
         console.log("ローカル署名者を使用します");
         
         try {
-          // PEMと秘密鍵の内容をそのままバッファに変換
+          // PEMと秘密鍵の内容をバッファに変換
           const certificateBuffer = Buffer.from(certificate.content);
           const privateKeyBuffer = Buffer.from(privateKey.content);
           
@@ -263,56 +249,65 @@ export const signC2pa = async (req: Request, res: Response): Promise<void> => {
         signer = await createTestSigner();
       }
 
-      // C2PAインスタンスを作成
+      // C2PAインスタンスを署名者付きで作成
       const c2pa = createC2pa({ signer });
-
-      // 基本アサーションの準備
-      const assertions = manifestData.assertions ? [...manifestData.assertions] : [];
-
-      // 追加メタデータがあれば設定
-      if (manifestData.creator) {
-        assertions.push({
-          label: "dc.creator",
-          data: { value: manifestData.creator }, // オブジェクトでラップ
-        });
-      }
-
-      if (manifestData.copyright) {
-        assertions.push({
-          label: "dc.rights",
-          data: { value: manifestData.copyright }, // オブジェクトでラップ
-        });
-      }
-
-      if (manifestData.description) {
-        assertions.push({
-          label: "dc.description",
-          data: { value: manifestData.description }, // オブジェクトでラップ
-        });
-      }
 
       // マニフェストビルダーを作成
       const manifest = new ManifestBuilder({
         claim_generator: manifestData.claimGenerator || "c2pa-web-app/1.0.0",
         format: manifestData.format || mimeType,
         title: manifestData.title,
-        assertions: assertions,
       });
 
-      // アセットを準備 - ファイルパスを使用
-      const asset = {
+      // アサーションの追加
+      if (manifestData.assertions && manifestData.assertions.length > 0) {
+        // すべてのアサーションを追加
+        for (const assertion of manifestData.assertions) {
+          manifest.definition.assertions = manifest.definition.assertions || [];
+          manifest.definition.assertions.push(assertion);
+        }
+      }
+
+      // 追加メタデータの設定
+      if (manifestData.creator) {
+        manifest.definition.assertions = manifest.definition.assertions || [];
+        manifest.definition.assertions.push({
+          label: "dc.creator",
+          data: { value: manifestData.creator },
+        });
+      }
+
+      if (manifestData.copyright) {
+        manifest.definition.assertions = manifest.definition.assertions || [];
+        manifest.definition.assertions.push({
+          label: "dc.rights",
+          data: { value: manifestData.copyright },
+        });
+      }
+
+      if (manifestData.description) {
+        manifest.definition.assertions = manifest.definition.assertions || [];
+        manifest.definition.assertions.push({
+          label: "dc.description",
+          data: { value: manifestData.description },
+        });
+      }
+
+      // アセットを準備
+      const asset: FileAsset = {
         path: tempFilePath,
+        mimeType
       };
 
       try {
         // 署名を実行
         console.log("署名処理開始...");
-        await c2pa.sign({
+        const result = await c2pa.sign({
           asset,
           manifest,
           options: {
             outputPath,
-          },
+          }
         });
 
         // 一時出力ファイルの存在確認
@@ -408,96 +403,71 @@ export const verifyC2pa = async (req: Request, res: Response): Promise<void> => 
     }
 
     try {
-      // C2PAモジュールを動的にロード
-      const { createC2pa } = await loadC2pa();
-      
-      // C2PAインスタンスを作成
-      const c2pa = createC2pa();
+      // ファイルのC2PA情報を読み取る
+      const fileAsset: FileAsset = { path: tempFilePath, mimeType };
+      const result = await c2paInstance.read(fileAsset);
 
-      try {
-        // ファイルパスを使用してC2PAデータを読み込み
-        const result = await c2pa.read({ path: tempFilePath, mimeType });
-
-        if (!result) {
-          res.json({
-            success: true,
-            hasC2pa: false,
-            isValid: false,
-            validationDetails: {
-              status: "invalid",
-              errors: ["このファイルにはC2PA情報が含まれていません。"],
-            },
-          });
-          return;
-        }
-
-        // 検証ステータスに基づいて結果を生成
-        const { validation_status } = result;
-        
-        let isValid = false;
-        let status = "invalid";
-        let errors: string[] = [];
-        let warnings: string[] = [];
-        
-        if (validation_status === "valid") {
-          isValid = true;
-          status = "valid";
-        } else if (validation_status === "invalid") {
-          // 具体的なエラー情報を抽出
-          errors.push("C2PA署名が無効です。");
-          if (result.validation_errors) {
-            if (Array.isArray(result.validation_errors)) {
-              errors = errors.concat(result.validation_errors);
-            }
-          }
-        } else {
-          // 警告がある場合
-          status = "warning";
-          warnings.push("C2PA署名に警告があります。");
-          if (result.validation_warnings) {
-            if (Array.isArray(result.validation_warnings)) {
-              warnings = warnings.concat(result.validation_warnings);
-            }
-          }
-        }
-
-        // 検証の詳細情報を生成
-        const details = {
-          validationType: validation_status,
-          activeManifest: result.active_manifest,
-          // その他の検証詳細情報があれば追加
-        };
-
-        res.json({
-          success: true,
-          hasC2pa: true,
-          isValid,
-          validationDetails: {
-            status,
-            details,
-            errors,
-            warnings,
-          },
-        });
-      } catch (verifyError) {
-        // C2PA検証エラーをログに記録
-        console.error('C2PA検証エラー:', verifyError);
-        
+      if (!result) {
         res.json({
           success: true,
           hasC2pa: false,
           isValid: false,
           validationDetails: {
             status: "invalid",
-            errors: ["C2PAデータの検証中にエラーが発生しました。"],
+            errors: ["このファイルにはC2PA情報が含まれていません。"],
           },
         });
+        return;
       }
-    } catch (c2paError) {
-      console.error("C2PAモジュール処理エラー:", c2paError);
-      res.status(500).json({
-        success: false,
-        error: "C2PAモジュールの処理に失敗しました",
+
+      // ステータスに基づいて結果を生成
+      const validationStatus = result.validation_status || "unknown";
+      
+      let isValid = false;
+      let status = "invalid";
+      let errors: string[] = [];
+      let warnings: string[] = [];
+      
+      if (validationStatus === "valid") {
+        isValid = true;
+        status = "valid";
+      } else if (validationStatus === "invalid") {
+        errors.push("C2PA署名が無効です。");
+      } else {
+        // 警告がある場合
+        status = "warning";
+        warnings.push("C2PA署名に警告があります。");
+      }
+
+      // 検証の詳細情報を生成
+      const details = {
+        validationType: validationStatus,
+        activeManifest: result.active_manifest ? result.active_manifest.label : undefined,
+      };
+
+      res.json({
+        success: true,
+        hasC2pa: true,
+        isValid,
+        validationDetails: {
+          status,
+          details,
+          errors,
+          warnings,
+        },
+      });
+    } catch (verifyError) {
+      // C2PA検証エラーをログに記録
+      console.error('C2PA検証エラー:', verifyError);
+      
+      res.json({
+        success: true,
+        hasC2pa: false,
+        isValid: false,
+        validationDetails: {
+          status: "invalid",
+          errors: ["C2PAデータの検証中にエラーが発生しました。"],
+        },
       });
     }
   } catch (error) {

@@ -44,3 +44,42 @@ export const upload = multer({
   },
   fileFilter
 });
+
+// 一時ファイルのクリーンアップタスク設定
+export function setupTempFilesCleanup() {
+  // 24時間ごとに実行
+  const CLEANUP_INTERVAL = 24 * 60 * 60 * 1000; // 24時間
+  
+  setInterval(() => {
+    try {
+      console.log('一時ファイルのクリーンアップを開始します...');
+      const now = Date.now();
+      const tempFiles = fs.readdirSync(config.tempDir);
+      
+      let removedCount = 0;
+      
+      tempFiles.forEach(file => {
+        const filePath = path.join(config.tempDir, file);
+        
+        try {
+          const stats = fs.statSync(filePath);
+          const fileAge = now - stats.mtimeMs;
+          
+          // ファイルの有効期限（24時間）を過ぎていれば削除
+          if (fileAge > config.tempFileTtl) {
+            fs.unlinkSync(filePath);
+            removedCount++;
+          }
+        } catch (error) {
+          console.error(`ファイル処理エラー: ${filePath}`, error);
+        }
+      });
+      
+      console.log(`クリーンアップ完了: ${removedCount}ファイルを削除しました。`);
+    } catch (error) {
+      console.error('一時ファイルクリーンアップエラー:', error);
+    }
+  }, CLEANUP_INTERVAL);
+  
+  console.log('一時ファイルのクリーンアップタスクが設定されました。');
+}
