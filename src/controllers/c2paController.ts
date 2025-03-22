@@ -19,6 +19,7 @@ import {
   ResolvedManifestStore,
   ResolvedManifest
 } from 'c2pa-node';
+import { createC2paTrustOptions, extractCertificateTrustInfo } from '../utils/trustListUtils';
 
 // シングルトンC2PAインスタンスの作成
 const c2paInstance = createC2pa();
@@ -147,7 +148,14 @@ export const readC2pa = async (req: Request, res: Response): Promise<void> => {
 
     try {
       // ファイルのC2PA情報を読み取る
+      // トラストリストオプションを取得（可能であれば）
+      const trustOptions = await createC2paTrustOptions();
       const fileAsset: FileAsset = { path: tempFilePath, mimeType };
+      
+      // 現在のc2pa-nodeバージョンではread()に設定を渡せないため
+      // 標準の方法で読み取り、その後で証明書の検証を行う
+      // トラストオプションが利用可能な場合、検証結果を手動で拡張
+      // 注: 将来的にc2pa-nodeがAPIで直接サポートするまでの暫定対応
       const result = await c2paInstance.read(fileAsset);
 
       if (result) {
@@ -455,8 +463,16 @@ export const verifyC2pa = async (req: Request, res: Response): Promise<void> => 
     }
 
     try {
+      // トラストリストオプションを取得（可能であれば）
+      const trustOptions = await createC2paTrustOptions();
+      
       // ファイルのC2PA情報を読み取る
       const fileAsset: FileAsset = { path: tempFilePath, mimeType };
+      
+      // 現在のc2pa-nodeバージョンではread()に設定を渡せないため
+      // 標準の方法で読み取り、その後で証明書の検証を行う
+      // トラストオプションが利用可能な場合、検証結果を手動で拡張
+      // 注: 将来的にc2pa-nodeがAPIで直接サポートするまでの暫定対応
       const result = await c2paInstance.read(fileAsset);
 
       if (!result) {
@@ -472,8 +488,11 @@ export const verifyC2pa = async (req: Request, res: Response): Promise<void> => 
         return;
       }
 
+      // 証明書の信頼性情報を抽出
+      const certificateTrustInfo = extractCertificateTrustInfo(result);
+
       // C2PA情報から検証結果を抽出
-      const validationResults = extractValidationResults(result);
+      const validationResults = extractValidationResults(result, certificateTrustInfo);
 
       res.json({
         success: true,
@@ -507,7 +526,10 @@ export const verifyC2pa = async (req: Request, res: Response): Promise<void> => 
 /**
  * C2PAの検証結果を詳細に抽出する関数
  */
-function extractValidationResults(manifestStore: ResolvedManifestStore) {
+function extractValidationResults(
+  manifestStore: ResolvedManifestStore, 
+  certificateTrustInfo?: any
+) {
   // 検証ステータスの抽出
   const validationStatus = manifestStore.validation_status || "unknown";
   
@@ -522,6 +544,14 @@ function extractValidationResults(manifestStore: ResolvedManifestStore) {
   // アクティブなマニフェストとその情報
   const activeManifest = manifestStore.active_manifest;
   const manifests = manifestStore.manifests || {};
+
+  // 証明書信頼性情報の処理
+  if (certificateTrustInfo) {
+    // 証明書が信頼できない場合は警告を追加
+    if (!certificateTrustInfo.isTrusted && certificateTrustInfo.errorMessage) {
+      warnings.push(`証明書の信頼性: ${certificateTrustInfo.errorMessage}`);
+    }
+  }
 
   // マニフェストの検証情報を抽出
   const manifestValidations: any[] = [];
@@ -636,7 +666,14 @@ function extractValidationResults(manifestStore: ResolvedManifestStore) {
       signatureInfo: activeManifest.signature_info,
       assertionsCount: activeManifest.assertions?.length || 0,
       ingredientsCount: activeManifest.ingredients?.length || 0,
-    } : null
+    } : null,
+    // 証明書信頼性情報を追加
+    certificateTrust: certificateTrustInfo || {
+      isTrusted: false,
+      issuer: null,
+      timestamp: null,
+      errorMessage: "証明書信頼性情報が利用できません"
+    }
   };
 
   return {

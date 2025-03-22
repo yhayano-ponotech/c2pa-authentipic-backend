@@ -33,6 +33,21 @@ export const config = {
     thumbnailOptions: {
       maxSize: 1024,
       quality: 80
+    },
+    trust: {
+      // Content Credentials (C2PA) 信頼リスト設定
+      enabled: process.env.ENABLE_TRUST_LIST !== 'false', // デフォルトで有効
+      sources: {
+        baseUrl: 'https://contentcredentials.org/trust',
+        allowedCerts: 'allowed.pem',
+        allowedHashes: 'allowed.sha256.txt',
+        anchorCerts: 'anchors.pem',
+        storeCfg: 'store.cfg'
+      },
+      cacheConfig: {
+        ttl: 24 * 60 * 60 * 1000, // 24時間
+        refreshInterval: 12 * 60 * 60 * 1000 // 12時間ごとに更新
+      }
     }
   },
   cors: {
