@@ -8,7 +8,7 @@ import {
   generateUniqueId 
 } from '../utils/fileUtils';
 import { config } from '../config';
-import { SignData } from '../types';
+import { SignData, C2paManifestData } from '../types';
 import { 
   createC2pa, 
   createTestSigner, 
@@ -16,11 +16,49 @@ import {
   SigningAlgorithm, 
   BufferAsset, 
   FileAsset,
-  ResolvedManifestStore
+  ResolvedManifestStore,
+  ResolvedManifest
 } from 'c2pa-node';
 
 // シングルトンC2PAインスタンスの作成
 const c2paInstance = createC2pa();
+
+/**
+ * c2pa-nodeライブラリから返されるResolvedManifestStoreをフロントエンドで期待する
+ * C2paManifestData形式に変換する関数
+ * @param data c2pa-nodeライブラリから返されるデータ
+ * @returns フロントエンド互換の形式に変換されたデータ
+ */
+function transformC2paDataForFrontend(data: ResolvedManifestStore): C2paManifestData {
+  // active_manifestがオブジェクトの場合、そのラベルを文字列として使用
+  const activeManifestLabel = data.active_manifest?.label || "";
+  
+  // マニフェストを変換
+  const transformedManifests: Record<string, any> = {};
+  Object.entries(data.manifests).forEach(([key, manifest]) => {
+    transformedManifests[key] = {
+      claim_generator: manifest.claim_generator || "",
+      format: manifest.format || "",
+      title: manifest.title || "",
+      label: manifest.label || "",
+      assertions: manifest.assertions || [],
+      ingredients: manifest.ingredients || [],
+      signature_info: manifest.signature_info || null,
+      // その他必要なフィールド
+    };
+  });
+
+  // フロントエンドの期待する形式に整形
+  const transformed: C2paManifestData = {
+    active_manifest: activeManifestLabel,
+    manifests: transformedManifests,
+    validation_status: Array.isArray(data.validation_status) 
+      ? data.validation_status[0]?.code || "unknown" 
+      : "unknown"
+  };
+
+  return transformed;
+}
 
 /**
  * ファイルアップロード処理
@@ -113,11 +151,23 @@ export const readC2pa = async (req: Request, res: Response): Promise<void> => {
       const result = await c2paInstance.read(fileAsset);
 
       if (result) {
-        // C2PAデータがある場合
+        // データ構造をデバッグログとして出力
+        console.log("C2PA読み取り結果のデータ構造:", 
+          JSON.stringify({
+            active_manifest_type: typeof result.active_manifest,
+            active_manifest_label: result.active_manifest?.label,
+            has_manifests: !!result.manifests,
+            manifest_keys: Object.keys(result.manifests || {})
+          }, null, 2)
+        );
+
+        // C2PAデータがある場合、フロントエンドの期待する形式に変換
+        const transformedData = transformC2paDataForFrontend(result);
+        
         res.json({
           success: true,
           hasC2pa: true,
-          manifest: result,
+          manifest: transformedData,
         });
       } else {
         // C2PAデータがない場合
@@ -135,6 +185,7 @@ export const readC2pa = async (req: Request, res: Response): Promise<void> => {
       res.json({
         success: true,
         hasC2pa: false,
+        error: `C2PA読み取りエラー: ${readError instanceof Error ? readError.message : 'Unknown error'}`
       });
     }
   } catch (error) {
