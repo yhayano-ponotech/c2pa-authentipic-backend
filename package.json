@@ -18,7 +18,7 @@
   "type": "commonjs",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc",
+    "build": "npm install & tsc",
     "start": "node dist/server.js",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "lint": "eslint . --ext .ts"
