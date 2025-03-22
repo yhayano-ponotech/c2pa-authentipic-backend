@@ -15,7 +15,8 @@ import {
   ManifestBuilder, 
   SigningAlgorithm, 
   BufferAsset, 
-  FileAsset
+  FileAsset,
+  ResolvedManifestStore
 } from 'c2pa-node';
 
 // シングルトンC2PAインスタンスの作成
@@ -420,41 +421,13 @@ export const verifyC2pa = async (req: Request, res: Response): Promise<void> => 
         return;
       }
 
-      // ステータスに基づいて結果を生成
-      const validationStatus = result.validation_status || "unknown";
-      
-      let isValid = false;
-      let status = "invalid";
-      let errors: string[] = [];
-      let warnings: string[] = [];
-      
-      if (validationStatus === "valid") {
-        isValid = true;
-        status = "valid";
-      } else if (validationStatus === "invalid") {
-        errors.push("C2PA署名が無効です。");
-      } else {
-        // 警告がある場合
-        status = "warning";
-        warnings.push("C2PA署名に警告があります。");
-      }
-
-      // 検証の詳細情報を生成
-      const details = {
-        validationType: validationStatus,
-        activeManifest: result.active_manifest ? result.active_manifest.label : undefined,
-      };
+      // C2PA情報から検証結果を抽出
+      const validationResults = extractValidationResults(result);
 
       res.json({
         success: true,
         hasC2pa: true,
-        isValid,
-        validationDetails: {
-          status,
-          details,
-          errors,
-          warnings,
-        },
+        ...validationResults
       });
     } catch (verifyError) {
       // C2PA検証エラーをログに記録
@@ -479,3 +452,144 @@ export const verifyC2pa = async (req: Request, res: Response): Promise<void> => 
     });
   }
 };
+
+/**
+ * C2PAの検証結果を詳細に抽出する関数
+ */
+function extractValidationResults(manifestStore: ResolvedManifestStore) {
+  // 検証ステータスの抽出
+  const validationStatus = manifestStore.validation_status || "unknown";
+  
+  // 基本的な検証結果
+  let isValid = validationStatus === "valid";
+  let status = isValid ? "valid" : (validationStatus === "invalid" ? "invalid" : "warning");
+  
+  // エラーと警告を収集
+  let errors: string[] = [];
+  let warnings: string[] = [];
+
+  // アクティブなマニフェストとその情報
+  const activeManifest = manifestStore.active_manifest;
+  const manifests = manifestStore.manifests || {};
+
+  // マニフェストの検証情報を抽出
+  const manifestValidations: any[] = [];
+  Object.entries(manifests).forEach(([label, manifest]) => {
+    // 各マニフェストの検証情報を収集
+    const manifestInfo: any = {
+      label,
+      title: manifest.title || "不明なタイトル",
+      isActive: activeManifest && activeManifest.label === label,
+      signatureInfo: manifest.signature_info || null,
+      validationDetails: []
+    };
+
+    // マニフェストの署名検証結果
+    if (manifest.signature_info) {
+      manifestInfo.signatureTime = manifest.signature_info.timeObject || manifest.signature_info.time;
+      manifestInfo.signatureIssuer = manifest.signature_info.issuer || "不明な発行者";
+    }
+
+    // 明確なエラーパターンを検出して追加
+    if (validationStatus === "invalid") {
+      errors.push("C2PA署名が無効です。マニフェストまたは署名が改ざんされている可能性があります。");
+    } else if (validationStatus !== "valid") {
+      warnings.push("C2PA署名に警告があります。署名は有効ですが、一部の検証に問題があります。");
+    }
+
+    // マニフェストから具体的な警告を抽出
+    if (manifest.validation_status && Array.isArray(manifest.validation_status)) {
+      manifest.validation_status.forEach((vs: any) => {
+        const detail = {
+          code: vs.code || "unknown",
+          explanation: vs.explanation || "詳細情報なし",
+          url: vs.url || null
+        };
+        manifestInfo.validationDetails.push(detail);
+        
+        // 重大なエラーコードを検出
+        if (detail.code.includes("invalid") || detail.code.includes("error")) {
+          errors.push(detail.explanation);
+        } 
+        // 警告コードを検出
+        else if (detail.code.includes("warning")) {
+          warnings.push(detail.explanation);
+        }
+      });
+    }
+
+    // 材料（インクルードされたファイル）の検証
+    if (manifest.ingredients && manifest.ingredients.length > 0) {
+      const ingredientIssues: string[] = [];
+      manifest.ingredients.forEach((ingredient, index) => {
+        if (ingredient.validation_status && Array.isArray(ingredient.validation_status)) {
+          ingredient.validation_status.forEach((vs: any) => {
+            const issue = `材料 ${index + 1} (${ingredient.title || "不明"}): ${vs.explanation || vs.code || "検証エラー"}`;
+            ingredientIssues.push(issue);
+            
+            // エラーと警告を分類
+            if (vs.code && (vs.code.includes("invalid") || vs.code.includes("error"))) {
+              errors.push(issue);
+            } else {
+              warnings.push(issue);
+            }
+          });
+        }
+      });
+      
+      if (ingredientIssues.length > 0) {
+        manifestInfo.ingredientIssues = ingredientIssues;
+      }
+    }
+
+    manifestValidations.push(manifestInfo);
+  });
+
+  // 署名タイムスタンプに関する検証
+  const activeSignatureInfo = activeManifest?.signature_info;
+  if (activeSignatureInfo) {
+    const signatureDate = activeSignatureInfo.timeObject || 
+      (activeSignatureInfo.time ? new Date(activeSignatureInfo.time) : null);
+    
+    if (!signatureDate) {
+      warnings.push("署名にタイムスタンプが含まれていません。信頼性が低下する可能性があります。");
+    } else {
+      const now = new Date();
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(now.getFullYear() - 1);
+      
+      if (signatureDate < oneYearAgo) {
+        warnings.push("署名が1年以上前に作成されています。証明書が失効している可能性があります。");
+      }
+    }
+  }
+
+  // 詳細な検証情報を組み立て
+  const validationDetails = {
+    status,
+    errors,
+    warnings,
+    manifestValidations,
+    // 全体的なマニフェストストア情報
+    manifestStore: {
+      validationStatus,
+      activeManifestLabel: activeManifest?.label || null,
+      manifestsCount: Object.keys(manifests).length,
+    },
+    // アクティブマニフェストの詳細情報
+    activeManifest: activeManifest ? {
+      label: activeManifest.label,
+      title: activeManifest.title,
+      format: activeManifest.format,
+      generator: activeManifest.claim_generator,
+      signatureInfo: activeManifest.signature_info,
+      assertionsCount: activeManifest.assertions?.length || 0,
+      ingredientsCount: activeManifest.ingredients?.length || 0,
+    } : null
+  };
+
+  return {
+    isValid,
+    validationDetails
+  };
+}
