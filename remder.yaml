@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: c2pa-authentipic-backend
+    env: node
+    buildCommand: ./render-build.sh
+    startCommand: npm start
+    nodeVersion: 22.x
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: NODE_ENV
+        value: production
+      - key: CORS_ORIGIN
+        value: "*"
+      - key: ENABLE_TRUST_LIST
+        value: "true"
+    healthCheckPath: /
