@@ -54,7 +54,7 @@ export const config = {
     origin: process.env.CORS_ORIGIN || '*',
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: false,
+    credentials: true,
     maxAge: 86400 // 24時間
   },
   logging: {
