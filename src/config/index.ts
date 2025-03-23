@@ -51,9 +51,11 @@ export const config = {
     }
   },
   cors: {
-    origin: process.env.CORS_ORIGIN || '*',
+    // CORS設定の強化
+    origin: process.env.CORS_ORIGIN || '*', // フロントエンドのオリジン
     methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+    exposedHeaders: ['Content-Type', 'Content-Disposition', 'Content-Length'],
     credentials: true,
     maxAge: 86400 // 24時間
   },

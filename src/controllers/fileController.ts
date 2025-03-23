@@ -38,6 +38,13 @@ export const getTempFile = async (req: Request, res: Response): Promise<void> =>
     // MIMEタイプを取得
     const contentType = getMimeType(filename) || "application/octet-stream";
 
+    // クロスオリジンリソースポリシーとCORSヘッダーを設定
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Max-Age', '86400'); // 24時間
+
     // レスポンスを返す
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=300');
@@ -91,6 +98,13 @@ export const downloadFile = async (req: Request, res: Response): Promise<void> =
     
     // ダウンロード用のファイル名を生成
     const downloadFileName = sanitizeFilename(`c2pa_signed_${Date.now()}${extension}`);
+
+    // クロスオリジンリソースポリシーとCORSヘッダーを設定
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Max-Age', '86400'); // 24時間
 
     // レスポンスを返す
     res.setHeader('Content-Type', contentType);

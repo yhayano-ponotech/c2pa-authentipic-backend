@@ -14,11 +14,31 @@ import { updateTrustLists } from './services/trustListService';
 // Expressアプリケーションを初期化
 const app = express();
 
-// ミドルウェアの設定
-app.use(cors(config.cors)); // CORSを有効化
-app.use(helmet()); // セキュリティヘッダーを設定
-app.use(morgan(config.logging.format)); // リクエストログを出力
-app.use(express.json()); // JSONボディパーサー
+// 拡張されたCORS設定
+const corsOptions = {
+  origin: config.cors.origin,
+  methods: config.cors.methods,
+  allowedHeaders: config.cors.allowedHeaders,
+  credentials: config.cors.credentials,
+  maxAge: config.cors.maxAge,
+  // プリフライトリクエストが成功した場合に実際のリクエストで使用できるヘッダーを指定
+  exposedHeaders: ['Content-Type', 'Content-Disposition', 'Content-Length'],
+};
+
+// CORSミドルウェアを追加（拡張オプション付き）
+app.use(cors(corsOptions));
+
+// セキュリティヘッダーを設定（CORS関連の設定を調整）
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }, // クロスオリジンリソースポリシーを許可
+  crossOriginEmbedderPolicy: false, // クロスオリジンの埋め込みを許可
+}));
+
+// リクエストログを出力
+app.use(morgan(config.logging.format));
+
+// JSONボディパーサー
+app.use(express.json());
 
 // 一時ディレクトリの作成（存在しない場合）
 if (!fs.existsSync(config.tempDir)) {
@@ -52,6 +72,9 @@ async function initializeTrustLists() {
 
 // 証明書リストの初期化
 initializeTrustLists();
+
+// オプションリクエストに対するプリフライトレスポンスを処理
+app.options('*', cors(corsOptions));
 
 // ルートの設定
 app.use('/api/c2pa', c2paRoutes);
