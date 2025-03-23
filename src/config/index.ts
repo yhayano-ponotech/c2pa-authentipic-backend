@@ -51,7 +51,7 @@ export const config = {
     }
   },
   cors: {
-    origin: '*',
+    origin: process.env.CORS_ORIGIN || '*',
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
